@@ -13,13 +13,15 @@ import { ProductCartProps, useCartStore } from "@/store/cart-store";
 import { Feather } from "@expo/vector-icons";
 import { formatCurrency } from "@/utils/functions/format-currency";
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view'
+import { useStripe } from '@stripe/stripe-react-native';
 
 const PHONE_NUMBER = '5519999999999'
 
-export default function Cart(){
+export default function Cart() {
     const [address, setAddress] = useState('')
     const cartStore = useCartStore()
     const navigation = useNavigation()
+    const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
     const isProducts = cartStore.products.length > 0
 
@@ -28,26 +30,65 @@ export default function Cart(){
             (total, product) => total + product.price * product.quantity, 0
         ))
 
-    function handleProductRemove(product: ProductCartProps){
+    function handleProductRemove(product: ProductCartProps) {
         Alert.alert('Remover', `Deseja remover ${product.title} da sacolinha`, [
             {
                 text: 'Cancelar'
             },
             {
                 text: 'Remover',
-                onPress:() => cartStore.remove(product.id)
+                onPress: () => cartStore.remove(product.id)
             }
         ])
     }
-         
-    function handleOrder(){
-        
-        if (address.trim().length === 0){
+
+    const openPaymentSheet = async () => {
+
+    }
+
+    const initializedPaymentSheet = async () => {
+        const amountInCents = Math.round(
+            cartStore.products.reduce(
+                (total, product) => total + product.price * product.quantity, 0
+            ) * 100
+        )
+
+        try {
+            const response = (await fetch('http://localhost:8080/payment-intent', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    amount: amountInCents
+                })
+            }));
+
+            const data = await response.json();
+
+            const { clientSecret } = data;
+
+            if (!clientSecret || typeof clientSecret !== 'string') {
+                console.error('Invalid Client Secret');
+                return false
+            }
+
+            return true;
+
+        } catch (err) {
+            console.log(err);
+            return false;
+        }
+    }
+
+    async function handleOrder() {
+
+        if (address.trim().length === 0) {
             return Alert.alert('Pedido', 'Informe os dados da entrega')
         }
 
         const products = cartStore.products
-            .map(product => `\n ${product.quantity}x ${product.title}` )
+            .map(product => `\n ${product.quantity}x ${product.title}`)
             .join('')
 
         const message = `
@@ -59,53 +100,58 @@ export default function Cart(){
             \n Valor total: ${total}
 
         `
-        // console.log(message);
 
-        Linking.openURL(
-         `http://api.whatsapp.com/send?phone=${PHONE_NUMBER}&text=${message}`   
-        )
-        
-        cartStore.clear()
-        navigation.goBack()
+        const isInitialized = await initializedPaymentSheet()
+
+        if (isInitialized) {
+            await openPaymentSheet()
+        }
+
+        // Linking.openURL(
+        //  `http://api.whatsapp.com/send?phone=${PHONE_NUMBER}&text=${message}`   
+        // )
+
+        // cartStore.clear()
+        // navigation.goBack()
 
     }
 
 
-    return(
+    return (
         <View className="flex-1 pt-8">
-            <Header title="Minha Sacolinha"/>
+            <Header title="Minha Sacolinha" />
             <KeyboardAwareScrollView>
-            <ScrollView>
-            <View className="flex-1 p-5">    
-            { isProducts ? (   
-                <View className="border-b border-slate-700">
-                    {   
-                        cartStore.products.map(product => (
-                            <Product key={product.id} data={product} 
-                            onPress={() => handleProductRemove(product)}/>
-                        ))
-                    }
-                </View>
-              ) : (
-                <Text className="font-body text-slate-400 text-2xl text-center my-8">
-                    Sua sacolinha está vazia...
-                </Text>
-              ) 
-            }        
-                <View className="flex-row gap-2 items-center mt-5 mb-4">
-                    <Text className="text-white text-xl font-subtitle">Total:</Text>
-                    <Text className="text-lime-400 text-2xl font-heading">{total}</Text>
-                </View>
-                <Input placeholder="Informe o endereço de entrega com rua,
+                <ScrollView>
+                    <View className="flex-1 p-5">
+                        {isProducts ? (
+                            <View className="border-b border-slate-700">
+                                {
+                                    cartStore.products.map(product => (
+                                        <Product key={product.id} data={product}
+                                            onPress={() => handleProductRemove(product)} />
+                                    ))
+                                }
+                            </View>
+                        ) : (
+                            <Text className="font-body text-slate-400 text-2xl text-center my-8">
+                                Sua sacolinha está vazia...
+                            </Text>
+                        )
+                        }
+                        <View className="flex-row gap-2 items-center mt-5 mb-4">
+                            <Text className="text-white text-xl font-subtitle">Total:</Text>
+                            <Text className="text-lime-400 text-2xl font-heading">{total}</Text>
+                        </View>
+                        <Input placeholder="Informe o endereço de entrega com rua,
                     bairro, CEP, número e complemento..."
-                    onChangeText={setAddress}
-                    // mudanças do botão do teclado do celular
-                    blurOnSubmit={true} // permite a teclar <enter> do teclado enviar o pedido
-                    onSubmitEditing={handleOrder} // quando teclar enter chamar a funcao
-                    returnKeyType='next' // mudando o ícone do teclado
-                />
-            </View>                
-            </ScrollView>
+                            onChangeText={setAddress}
+                            // mudanças do botão do teclado do celular
+                            blurOnSubmit={true} // permite a teclar <enter> do teclado enviar o pedido
+                            onSubmitEditing={handleOrder} // quando teclar enter chamar a funcao
+                            returnKeyType='next' // mudando o ícone do teclado
+                        />
+                    </View>
+                </ScrollView>
             </KeyboardAwareScrollView>
             <View className="p-5 gap-5">
                 <Button onPress={handleOrder}>
@@ -114,7 +160,7 @@ export default function Cart(){
                         <Feather name="arrow-right-circle" size={20} />
                     </Button.Icon>
                 </Button>
-                <LinkButton title="Voltar ao cardápio" href="/"/>
+                <LinkButton title="Voltar ao cardápio" href="/" />
             </View>
         </View>
     )
