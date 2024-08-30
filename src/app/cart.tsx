@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigation } from 'expo-router';
 
 import { View, Text, ScrollView, Alert, Linking } from "react-native";
@@ -14,6 +14,7 @@ import { Feather } from "@expo/vector-icons";
 import { formatCurrency } from "@/utils/functions/format-currency";
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view'
 import { useStripe } from '@stripe/stripe-react-native';
+import axios from 'axios';
 
 const PHONE_NUMBER = '5519999999999'
 
@@ -43,8 +44,31 @@ export default function Cart() {
     }
 
     const openPaymentSheet = async () => {
+        const { error } = await presentPaymentSheet();
 
+        if (error) {
+            Alert.alert(`Error code: ${error.code} - ${error.message}`);
+        } else {
+            Alert.alert('Sucesso', 'Seu pedido foi confirmado');
+        }
+
+        navigation.goBack();
+        cartStore.clear();
     }
+
+    useEffect(() => {
+        console.log('AA')
+        const test = async() => {
+            try {
+                const response = await axios.get('http://localhost:8080/ping')
+                console.log(response)
+            } catch (error) {
+                console.log(error)
+            }
+        }
+
+        test()
+    }, [])
 
     const initializedPaymentSheet = async () => {
         const amountInCents = Math.round(
@@ -71,6 +95,17 @@ export default function Cart() {
             if (!clientSecret || typeof clientSecret !== 'string') {
                 console.error('Invalid Client Secret');
                 return false
+            }
+
+            const { error } = await initPaymentSheet({
+                paymentIntentClientSecret: clientSecret,
+                merchantDisplayName: 'Delivery Zap Zap',
+                returnURL: '/'
+            });
+
+            if (error) {
+                console.error('Erro initialize payment sheet');
+                return false;
             }
 
             return true;
